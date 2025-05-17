@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Night Mode PDF</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #2c3e50;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            text-align: center;
+        }
+        .success-message {
+            background-color: #e5f9e0;
+            border-left: 4px solid #27ae60;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            text-align: left;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+            text-decoration: none;
+            margin: 0 10px;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .btn-home {
+            background-color: #7f8c8d;
+        }
+        .btn-home:hover {
+            background-color: #6c7a89;
+        }
+        .btn-container {
+            margin-top: 25px;
+        }
+        footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Your PDF is Ready!</h1>
+        
+        <div class="success-message">
+            <p>Your PDF has been successfully converted to night mode. You can now download your file.</p>
+        </div>
+        
+        <div class="btn-container">
+            <a href="{{ url_for('get_file', filename=filename) }}" class="btn">Download PDF</a>
+            <a href="{{ url_for('view_file', filename=filename) }}" class="btn" target="_blank">View PDF</a>
+            <a href="{{ url_for('upload_file') }}" class="btn btn-home">Convert Another PDF</a>
+        </div>
+    </div>
+    
+    <footer>
+        <p>PDF Night Mode Converter - Made with PyMuPDF and Flask</p>
+    </footer>
+</body>
+</html> 
