@@ -42,6 +42,13 @@
             margin-bottom: 20px;
             border-radius: 4px;
         }
+        .warning-box {
+            background-color: #fff8e1;
+            border-left: 4px solid #ffa000;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
         .file-input {
             margin-bottom: 20px;
         }
@@ -64,6 +71,24 @@
             font-size: 14px;
             color: #7f8c8d;
         }
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -72,7 +97,13 @@
         
         <div class="info-box">
             <p>Upload a PDF file to convert it to night mode (dark background with light text).</p>
+            <p>The converted PDF will be automatically downloaded when ready.</p>
             <p>Maximum file size: 16MB</p>
+        </div>
+        
+        <div class="warning-box">
+            <p><strong>Note:</strong> Large PDFs may take longer to process. Please be patient after uploading.</p>
+            <p>Processing time depends on the file size and complexity.</p>
         </div>
         
         {% if error %}
@@ -81,16 +112,31 @@
         </div>
         {% endif %}
         
-        <form class="upload-form" method="post" enctype="multipart/form-data">
+        <form class="upload-form" method="post" enctype="multipart/form-data" id="uploadForm">
             <div class="file-input">
-                <input type="file" name="file" accept=".pdf">
+                <input type="file" name="file" accept=".pdf" id="fileInput">
             </div>
-            <button type="submit">Convert to Night Mode</button>
+            <button type="submit" id="submitBtn">Convert to Night Mode</button>
+            
+            <div class="loading" id="loadingIndicator">
+                <div class="spinner"></div>
+                <p>Converting your PDF... This may take a minute.</p>
+            </div>
         </form>
     </div>
     
     <footer>
         <p>PDF Night Mode Converter - Made with PyMuPDF and Flask</p>
     </footer>
+    
+    <script>
+        document.getElementById('uploadForm').onsubmit = function() {
+            if (document.getElementById('fileInput').files.length > 0) {
+                document.getElementById('submitBtn').style.display = 'none';
+                document.getElementById('loadingIndicator').style.display = 'block';
+            }
+            return true;
+        };
+    </script>
 </body>
 </html> 

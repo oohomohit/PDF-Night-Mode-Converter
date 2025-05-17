@@ -17,39 +17,49 @@ def convert_pdf_to_night_mode(input_path, output_path):
         # Create output document
         doc_out = fitz.open()
         
+        # Process each page with reduced memory usage
         for page_no in range(len(doc_in)):
             # Get the page
             page = doc_in[page_no]
             
-            # Create a new page in output doc with same dimensions
-            new_page = doc_out.new_page(width=page.rect.width, height=page.rect.height)
+            # Render at slightly lower resolution to save memory
+            matrix = fitz.Matrix(1.5, 1.5)  # Reduced from 2.0 to save memory
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
             
-            # Set black background
+            # Convert to PIL Image
+            img_data = pix.tobytes("png")
+            img = Image.open(io.BytesIO(img_data))
+            
+            # Free up memory
+            pix = None
+            
+            # Invert the image
+            img_inverted = ImageOps.invert(img.convert("RGB"))
+            
+            # Free up memory
+            img = None
+            
+            # Convert back to bytes
+            img_bytes = io.BytesIO()
+            img_inverted.save(img_bytes, format="PNG", optimize=True, quality=85)
+            img_bytes.seek(0)
+            
+            # Create a new page with black background
+            new_page = doc_out.new_page(width=page.rect.width, height=page.rect.height)
             shape = new_page.new_shape()
             shape.draw_rect(new_page.rect)
             shape.finish(fill=(0, 0, 0))
             shape.commit()
             
-            # Render page to high-resolution image
-            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-            
-            # Convert PyMuPDF pixmap to PIL Image
-            img_data = pix.tobytes("png")
-            img = Image.open(io.BytesIO(img_data))
-            
-            # Invert colors using PIL
-            img_inverted = ImageOps.invert(img.convert("RGB"))
-            
-            # Convert back to bytes
-            img_bytes = io.BytesIO()
-            img_inverted.save(img_bytes, format="PNG")
-            img_bytes.seek(0)
-            
             # Add inverted image to page
             new_page.insert_image(new_page.rect, stream=img_bytes)
+            
+            # Free up memory
+            img_inverted = None
+            img_bytes = None
         
         # Save and close
-        doc_out.save(output_path)
+        doc_out.save(output_path, garbage=4, deflate=True, clean=True)
         doc_out.close()
         doc_in.close()
         
