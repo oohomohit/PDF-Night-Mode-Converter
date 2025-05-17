@@ -49,6 +49,21 @@
             margin-bottom: 20px;
             border-radius: 4px;
         }
+        .feature-box {
+            background-color: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .danger-box {
+            background-color: #ffebee;
+            border-left: 4px solid #d32f2f;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
         .file-input {
             margin-bottom: 20px;
         }
@@ -64,6 +79,10 @@
         }
         button:hover {
             background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
         }
         footer {
             margin-top: 30px;
@@ -89,6 +108,25 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        #sizeWarning {
+            display: none;
+            color: #555555;
+            margin-top: 5px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+        .tab.active {
+            border-bottom: 2px solid #3498db;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -98,13 +136,19 @@
         <div class="info-box">
             <p>Upload a PDF file to convert it to night mode (dark background with light text).</p>
             <p>The converted PDF will be automatically downloaded when ready.</p>
-            <p>Maximum file size: 16MB</p>
         </div>
         
+        {% if serverless_mode %}
         <div class="warning-box">
-            <p><strong>Note:</strong> Large PDFs may take longer to process. Please be patient after uploading.</p>
-            <p>Processing time depends on the file size and complexity.</p>
+            <p>⚠️ <strong>Serverless Mode:</strong> For small files (under 2MB), processing happens in one go.</p>
+            <p>For larger files, our chunk processing system divides your PDF into smaller parts, processes each part separately, and combines them back together.</p>
         </div>
+        {% else %}
+        <div class="feature-box">
+            <p>✅ <strong>Full Mode:</strong> You can process PDFs up to 50MB!</p>
+            <p>Large files may take longer to process but will be handled in a single operation.</p>
+        </div>
+        {% endif %}
         
         {% if error %}
         <div class="error-message">
@@ -115,12 +159,13 @@
         <form class="upload-form" method="post" enctype="multipart/form-data" id="uploadForm">
             <div class="file-input">
                 <input type="file" name="file" accept=".pdf" id="fileInput">
+                <div id="sizeWarning"></div>
             </div>
             <button type="submit" id="submitBtn">Convert to Night Mode</button>
             
             <div class="loading" id="loadingIndicator">
                 <div class="spinner"></div>
-                <p>Converting your PDF... This may take a minute.</p>
+                <p>Processing your PDF... This may take a minute.</p>
             </div>
         </form>
     </div>
@@ -130,12 +175,78 @@
     </footer>
     
     <script>
-        document.getElementById('uploadForm').onsubmit = function() {
-            if (document.getElementById('fileInput').files.length > 0) {
-                document.getElementById('submitBtn').style.display = 'none';
-                document.getElementById('loadingIndicator').style.display = 'block';
+        // File size information
+        {% if serverless_mode %}
+        const MAX_SINGLE_PROCESS_SIZE = 2 * 1024 * 1024; // 2MB
+        const MAX_CHUNKED_PROCESS_SIZE = 50 * 1024 * 1024; // 50MB
+        {% else %}
+        const MAX_SINGLE_PROCESS_SIZE = 50 * 1024 * 1024; // 50MB
+        {% endif %}
+        
+        const fileInput = document.getElementById('fileInput');
+        const submitBtn = document.getElementById('submitBtn');
+        const sizeWarning = document.getElementById('sizeWarning');
+        
+        fileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                const fileSize = this.files[0].size;
+                const fileSizeMB = (fileSize / (1024 * 1024)).toFixed(2);
+                
+                submitBtn.disabled = false;
+                
+                {% if serverless_mode %}
+                if (fileSize > MAX_CHUNKED_PROCESS_SIZE) {
+                    sizeWarning.textContent = `File too large: ${fileSizeMB}MB. Maximum size is 50MB.`;
+                    sizeWarning.style.color = '#e74c3c';
+                    sizeWarning.style.display = 'block';
+                    submitBtn.disabled = true;
+                } else if (fileSize > MAX_SINGLE_PROCESS_SIZE) {
+                    sizeWarning.textContent = `Large file: ${fileSizeMB}MB. Will be processed in chunks.`;
+                    sizeWarning.style.color = '#f39c12';
+                    sizeWarning.style.display = 'block';
+                } else {
+                    sizeWarning.textContent = `File size: ${fileSizeMB}MB (Single process)`;
+                    sizeWarning.style.color = '#27ae60';
+                    sizeWarning.style.display = 'block';
+                }
+                {% else %}
+                if (fileSize > MAX_SINGLE_PROCESS_SIZE) {
+                    sizeWarning.textContent = `File too large: ${fileSizeMB}MB. Maximum size is 50MB.`;
+                    sizeWarning.style.color = '#e74c3c';
+                    sizeWarning.style.display = 'block';
+                    submitBtn.disabled = true;
+                } else {
+                    sizeWarning.textContent = `File size: ${fileSizeMB}MB (OK)`;
+                    sizeWarning.style.color = '#27ae60';
+                    sizeWarning.style.display = 'block';
+                }
+                {% endif %}
+            } else {
+                sizeWarning.style.display = 'none';
+                submitBtn.disabled = true;
             }
-            return true;
+        });
+        
+        // Show loading indicator on submit
+        document.getElementById('uploadForm').onsubmit = function() {
+            if (fileInput.files.length > 0) {
+                const fileSize = fileInput.files[0].size;
+                
+                {% if serverless_mode %}
+                // In serverless mode, don't show spinner for large files (they'll be redirected to chunk processing)
+                if (fileSize <= MAX_SINGLE_PROCESS_SIZE) {
+                    submitBtn.style.display = 'none';
+                    document.getElementById('loadingIndicator').style.display = 'block';
+                }
+                {% else %}
+                // In normal mode, always show spinner
+                submitBtn.style.display = 'none';
+                document.getElementById('loadingIndicator').style.display = 'block';
+                {% endif %}
+                
+                return true;
+            }
+            return false;
         };
     </script>
 </body>

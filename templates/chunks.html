@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processing Large PDF</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        h2 {
+            text-align: center;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            color: #7f8c8d;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+        .progress-container {
+            margin-bottom: 30px;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #eee;
+            border-radius: 4px;
+            overflow: hidden;
+            height: 20px;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #3498db;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .status {
+            margin-top: 10px;
+            text-align: center;
+            color: #7f8c8d;
+        }
+        .chunks-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        .chunk {
+            background-color: #ecf0f1;
+            border-radius: 4px;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .chunk:hover {
+            background-color: #e0e6e9;
+        }
+        .chunk.pending {
+            border: 1px dashed #bdc3c7;
+            color: #7f8c8d;
+        }
+        .chunk.processing {
+            background-color: #f0f9ff;
+            border: 1px solid #3498db;
+            color: #3498db;
+        }
+        .chunk.completed {
+            background-color: #eafaf1;
+            border: 1px solid #27ae60;
+            color: #27ae60;
+        }
+        .chunk.failed {
+            background-color: #fff5f5;
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        .btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .btn:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .btn-combine {
+            background-color: #27ae60;
+        }
+        .btn-combine:hover {
+            background-color: #219955;
+        }
+        footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+        .error-message {
+            color: #e74c3c;
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Processing Large PDF</h1>
+        <h2>File: {{ filename }}</h2>
+        
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress"></div>
+            </div>
+            <div class="status" id="status">Preparing to process {{ total_pages }} pages...</div>
+        </div>
+        
+        <div class="chunks-grid" id="chunks-grid">
+            <!-- Chunks will be generated here by JavaScript -->
+        </div>
+        
+        <div id="error-message" class="error-message" style="display: none;"></div>
+        
+        <div class="controls">
+            <button class="btn" id="process-all">Process All Pages</button>
+            <button class="btn btn-combine" id="combine-chunks" disabled>Combine & Download</button>
+        </div>
+    </div>
+    
+    <footer>
+        <p>PDF Night Mode Converter - Made with PyMuPDF and Flask</p>
+    </footer>
+    
+    <script>
+        // Page setup variables
+        const totalPages = {{ total_pages }};
+        const processId = "{{ process_id }}";
+        const optimalChunkSize = 5; // Optimal pages per chunk
+        
+        // Processing state
+        let chunks = [];
+        let completedChunks = [];
+        let processingChunk = null;
+        let isProcessing = false;
+        
+        // DOM elements
+        const chunksGrid = document.getElementById('chunks-grid');
+        const progressBar = document.getElementById('progress');
+        const statusElement = document.getElementById('status');
+        const errorMessage = document.getElementById('error-message');
+        const processAllBtn = document.getElementById('process-all');
+        const combineBtn = document.getElementById('combine-chunks');
+        
+        // Initialize the chunks
+        function initializeChunks() {
+            chunks = [];
+            // Create chunks of optimal size
+            let currentPage = 0;
+            
+            while (currentPage < totalPages) {
+                const start = currentPage;
+                const end = Math.min(currentPage + optimalChunkSize, totalPages);
+                
+                chunks.push({
+                    start: start,
+                    end: end,
+                    status: 'pending', // pending, processing, completed, failed
+                    id: `${start}_${end}`
+                });
+                
+                currentPage = end;
+            }
+            
+            renderChunks();
+        }
+        
+        // Render chunks in the UI
+        function renderChunks() {
+            chunksGrid.innerHTML = '';
+            
+            chunks.forEach(chunk => {
+                const chunkElement = document.createElement('div');
+                chunkElement.className = `chunk ${chunk.status}`;
+                chunkElement.setAttribute('data-id', chunk.id);
+                chunkElement.innerHTML = `Pages<br>${chunk.start + 1}-${chunk.end}`;
+                
+                chunkElement.addEventListener('click', () => {
+                    if (chunk.status === 'pending' && !isProcessing) {
+                        processChunk(chunk);
+                    }
+                });
+                
+                chunksGrid.appendChild(chunkElement);
+            });
+            
+            updateProgress();
+        }
+        
+        // Process a specific chunk
+        async function processChunk(chunk) {
+            if (isProcessing) return;
+            
+            isProcessing = true;
+            processingChunk = chunk;
+            
+            // Update UI
+            chunk.status = 'processing';
+            renderChunks();
+            statusElement.textContent = `Processing pages ${chunk.start + 1} to ${chunk.end}...`;
+            
+            try {
+                const response = await fetch('/api/process-chunk', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        start_page: chunk.start,
+                        end_page: chunk.end,
+                        process_id: processId
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    chunk.status = 'completed';
+                    completedChunks.push(chunk.id);
+                    statusElement.textContent = result.message;
+                    
+                    // Enable combine button if all chunks are processed
+                    if (completedChunks.length === chunks.length) {
+                        combineBtn.disabled = false;
+                        statusElement.textContent = 'All pages processed. Ready to combine!';
+                    }
+                } else {
+                    chunk.status = 'failed';
+                    showError(result.error || 'Failed to process chunk');
+                }
+            } catch (error) {
+                chunk.status = 'failed';
+                showError(`Network error: ${error.message}`);
+            } finally {
+                isProcessing = false;
+                processingChunk = null;
+                renderChunks();
+            }
+        }
+        
+        // Process all chunks in sequence
+        async function processAllChunks() {
+            if (isProcessing) return;
+            
+            processAllBtn.disabled = true;
+            
+            for (const chunk of chunks) {
+                if (chunk.status === 'pending') {
+                    await processChunk(chunk);
+                    // Small delay between chunks
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
+            
+            processAllBtn.disabled = false;
+        }
+        
+        // Combine all processed chunks
+        async function combineChunks() {
+            if (completedChunks.length === 0) return;
+            
+            combineBtn.disabled = true;
+            statusElement.textContent = 'Combining processed chunks...';
+            
+            try {
+                const response = await fetch('/api/combine-chunks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        chunks: completedChunks,
+                        process_id: processId
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success && result.redirect) {
+                    statusElement.textContent = 'Combined successfully! Downloading...';
+                    window.location.href = result.redirect;
+                } else {
+                    showError(result.error || 'Failed to combine chunks');
+                    combineBtn.disabled = false;
+                }
+            } catch (error) {
+                showError(`Network error: ${error.message}`);
+                combineBtn.disabled = false;
+            }
+        }
+        
+        // Update progress bar
+        function updateProgress() {
+            const totalChunks = chunks.length;
+            const completedCount = completedChunks.length;
+            const progressPercent = (completedCount / totalChunks) * 100;
+            progressBar.style.width = `${progressPercent}%`;
+        }
+        
+        // Show error message
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            statusElement.textContent = 'Error occurred';
+        }
+        
+        // Event listeners
+        processAllBtn.addEventListener('click', processAllChunks);
+        combineBtn.addEventListener('click', combineChunks);
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeChunks();
+        });
+    </script>
+</body>
+</html> 
