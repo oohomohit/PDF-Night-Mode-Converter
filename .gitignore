@@ -20,19 +20,10 @@ var/
 .installed.cfg
 *.egg
 
-# Uploads and results directories
-uploads/*
-results/*
-!uploads/.gitkeep
-!results/.gitkeep
-
-# Flask
-instance/
-.webassets-cache
-
-# Virtual environment
+# Virtual Environment
 venv/
 ENV/
+.env
 
 # IDE
 .idea/
@@ -40,6 +31,19 @@ ENV/
 *.swp
 *.swo
 
-# OS
+# PDF files
+*.pdf
+
+# Temporary files
+uploads/*
+!uploads/.gitkeep
+results/*
+!results/.gitkeep
+temp*/
+
+# Log files
+*.log
+
+# OS specific
 .DS_Store
 Thumbs.db 
