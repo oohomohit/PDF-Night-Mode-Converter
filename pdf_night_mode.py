@@ -110,10 +110,7 @@ def convert_pdf_to_night_mode(input_path, output_path):
         doc_out.save(output_path, 
                      garbage=4,          # Maximum garbage collection
                      deflate=True,       # Use deflate compression
-                     clean=True,         # Clean unused objects
-                     linear=True,        # Optimize for web
-                     pretty=False,       # No pretty printing
-                     encryption=None)    # No encryption
+                     clean=True)         # Clean unused objects
         doc_out.close()
         doc_in.close()
         
@@ -164,6 +161,9 @@ def process_pdf_in_chunks(input_path, output_path, start_page, end_page):
         # Create output document
         doc_out = fitz.open()
         
+        # Get file size
+        file_size = os.path.getsize(input_path)
+        
         # Process specified pages
         for page_idx in range(start_page, end_page):
             logger.info(f"Processing page {page_idx+1}")
@@ -172,8 +172,16 @@ def process_pdf_in_chunks(input_path, output_path, start_page, end_page):
                 # Get the page
                 page = doc_in[page_idx]
                 
-                # Use lower resolution for chunks to save memory
-                scale = 0.8  # Lower resolution for chunked processing
+                # Use better resolution for chunks since we're processing fewer pages at once
+                chunk_size = end_page - start_page
+                if chunk_size <= 5:
+                    scale = 1.5  # Higher quality for small chunks
+                elif chunk_size <= 10:
+                    scale = 1.2  # Medium quality for medium chunks
+                else:
+                    scale = 0.8  # Lower quality for large chunks
+                
+                logger.info(f"Using chunk scale factor: {scale}")
                 
                 # Render page to image
                 matrix = fitz.Matrix(scale, scale)
@@ -181,7 +189,7 @@ def process_pdf_in_chunks(input_path, output_path, start_page, end_page):
                 
                 # Save to temporary file to avoid memory issues
                 temp_img_path = f"{output_path}_temp_{page_idx}.jpg"
-                pix.save(temp_img_path, "jpeg", quality=70)
+                pix.save(temp_img_path, "jpeg", quality=80)
                 
                 # Free memory
                 pix = None
@@ -196,9 +204,14 @@ def process_pdf_in_chunks(input_path, output_path, start_page, end_page):
                 img.close()
                 img = None
                 
+                # Set quality based on chunk size
+                quality = 75  # Default
+                if chunk_size <= 5:
+                    quality = 85  # Better quality for small chunks
+                
                 # Save inverted image
                 inverted_path = f"{output_path}_inverted_{page_idx}.jpg"
-                img_inverted.save(inverted_path, format="JPEG", optimize=True, quality=70)
+                img_inverted.save(inverted_path, format="JPEG", optimize=True, quality=quality)
                 
                 # Free memory
                 img_inverted.close()
@@ -237,8 +250,7 @@ def process_pdf_in_chunks(input_path, output_path, start_page, end_page):
         doc_out.save(output_path, 
                      garbage=4,
                      deflate=True,
-                     clean=True,
-                     linear=True)
+                     clean=True)
         doc_out.close()
         doc_in.close()
         

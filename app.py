@@ -5,10 +5,9 @@ import sys
 import traceback
 import logging
 import time
-import json
-from flask import Flask, request, render_template, send_file, redirect, url_for, jsonify, session
+from flask import Flask, request, render_template, send_file, jsonify
 from werkzeug.utils import secure_filename
-from pdf_night_mode import convert_pdf_to_night_mode, process_pdf_in_chunks
+from pdf_night_mode import convert_pdf_to_night_mode
 
 # Configure logging
 logging.basicConfig(
@@ -17,20 +16,18 @@ logging.basicConfig(
 )
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)  # For session management
 
-# Configure max content length for serverless mode
-MAX_CHUNK_SIZE = 2 * 1024 * 1024  # 2MB chunks
-MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max upload size in normal mode
+# Configure max content length
+MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB max upload size
 SERVERLESS_MODE = os.environ.get('VERCEL_ENV') is not None  # Detect if running on Vercel
 
 # Set content length based on environment
 if SERVERLESS_MODE:
-    app.config['MAX_CONTENT_LENGTH'] = MAX_CHUNK_SIZE  # Smaller limit for serverless
-    app.logger.info(f"Running in serverless mode with {MAX_CHUNK_SIZE/1024/1024}MB limit")
+    app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
+    app.logger.info(f"Running in serverless mode with {MAX_FILE_SIZE/1024/1024}MB limit")
 else:
-    app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH  # Larger limit for regular hosting
-    app.logger.info(f"Running in normal mode with {MAX_CONTENT_LENGTH/1024/1024}MB limit")
+    app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
+    app.logger.info(f"Running in normal mode with {MAX_FILE_SIZE/1024/1024}MB limit")
 
 # Create upload and result directories if not in serverless mode
 if not SERVERLESS_MODE:
@@ -77,13 +74,13 @@ def upload_file():
                         file.save(input_path)
                         app.logger.info(f"Saved input file to {input_path}")
                         
-                        # Check file size to determine processing method
+                        # Check file size
                         file_size = os.path.getsize(input_path)
                         app.logger.info(f"File size: {file_size} bytes")
                         
-                        if file_size <= MAX_CHUNK_SIZE:
-                            # For small files, process directly
-                            app.logger.info("Processing small file directly")
+                        if file_size <= MAX_FILE_SIZE:
+                            # Process the file
+                            app.logger.info("Processing file")
                             output_filename = f"night_mode_{original_filename}"
                             output_path = os.path.join(temp_dir, output_filename)
                             
@@ -94,9 +91,9 @@ def upload_file():
                                 
                                 # Check output file size
                                 output_size = os.path.getsize(output_path)
-                                if output_size > MAX_CHUNK_SIZE:
+                                if output_size > MAX_FILE_SIZE:
                                     return render_template('index.html', 
-                                                      error='Converted PDF is too large for serverless response. Please try a smaller document.')
+                                                      error='Converted PDF is too large for download. Please try a smaller document.')
                                 
                                 # Serve the file
                                 return send_file(
@@ -107,15 +104,10 @@ def upload_file():
                             else:
                                 return render_template('index.html', error='Error processing PDF. Conversion failed.')
                         else:
-                            # For large files, process in chunks
-                            app.logger.info("File too large for direct processing, redirecting to chunked processing")
-                            # Store the file path in the session
-                            session['pdf_path'] = input_path
-                            session['temp_dir'] = temp_dir
-                            session['original_filename'] = original_filename
-                            
-                            # Redirect to chunked processing route
-                            return redirect(url_for('process_chunks'))
+                            # For large files, suggest local processing
+                            return render_template('index.html', 
+                                     error='This file is too large for online processing. Please download the local converter.',
+                                     show_download_local=True)
                     
                     except Exception as e:
                         app.logger.error(f"Processing error: {str(e)}")
@@ -127,6 +119,13 @@ def upload_file():
                     filename = f"{unique_id}_{original_filename}"
                     input_path = os.path.join('uploads', filename)
                     file.save(input_path)
+                    
+                    # Check file size
+                    file_size = os.path.getsize(input_path)
+                    if file_size > MAX_FILE_SIZE:
+                        return render_template('index.html', 
+                                    error='This file is too large for online processing. Please download the local converter.',
+                                    show_download_local=True)
                     
                     # Generate output filename
                     output_filename = f"night_mode_{original_filename}"
@@ -154,155 +153,7 @@ def upload_file():
             return render_template('index.html', error=f'Server error: {str(e)}')
     
     # If GET request or any other case
-    chunk_limit = MAX_CHUNK_SIZE if SERVERLESS_MODE else MAX_CONTENT_LENGTH
-    return render_template('index.html', serverless_mode=SERVERLESS_MODE, size_limit=chunk_limit)
-
-@app.route('/process-chunks', methods=['GET'])
-def process_chunks():
-    try:
-        # Get stored file path from session
-        input_path = session.get('pdf_path')
-        temp_dir = session.get('temp_dir')
-        original_filename = session.get('original_filename')
-        
-        if not input_path or not os.path.exists(input_path):
-            app.logger.error("No valid PDF path in session")
-            return render_template('index.html', error='Session expired or invalid. Please upload again.')
-        
-        # Calculate total pages and chunks
-        import fitz
-        doc = fitz.open(input_path)
-        total_pages = len(doc)
-        doc.close()
-        
-        # Create a processing ID
-        process_id = str(uuid.uuid4())
-        
-        # Store process info in session
-        session['process_id'] = process_id
-        session['total_pages'] = total_pages
-        
-        return render_template('chunks.html', 
-                               total_pages=total_pages, 
-                               process_id=process_id,
-                               filename=original_filename)
-        
-    except Exception as e:
-        app.logger.error(f"Error in process_chunks: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return render_template('index.html', error=f'Error preparing chunks: {str(e)}')
-
-@app.route('/api/process-chunk', methods=['POST'])
-def api_process_chunk():
-    try:
-        # Get chunk information from request
-        data = request.json
-        start_page = int(data.get('start_page', 0))
-        end_page = int(data.get('end_page', 0))
-        
-        # Validate chunk range
-        if start_page < 0 or end_page <= start_page:
-            return jsonify({'success': False, 'error': 'Invalid page range'})
-        
-        # Get file path from session
-        input_path = session.get('pdf_path')
-        temp_dir = session.get('temp_dir')
-        
-        if not input_path or not os.path.exists(input_path):
-            return jsonify({'success': False, 'error': 'Session expired or invalid'})
-        
-        # Generate chunk output path
-        chunk_name = f"chunk_{start_page}_{end_page}.pdf"
-        chunk_path = os.path.join(temp_dir, chunk_name)
-        
-        # Process the chunk
-        success = process_pdf_in_chunks(input_path, chunk_path, start_page, end_page)
-        
-        if success:
-            return jsonify({
-                'success': True, 
-                'chunk_id': f"{start_page}_{end_page}",
-                'message': f"Pages {start_page+1}-{end_page} processed successfully"
-            })
-        else:
-            return jsonify({'success': False, 'error': 'Processing failed'})
-            
-    except Exception as e:
-        app.logger.error(f"Error processing chunk: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/combine-chunks', methods=['POST'])
-def api_combine_chunks():
-    try:
-        # Get information from session
-        temp_dir = session.get('temp_dir')
-        original_filename = session.get('original_filename')
-        
-        if not temp_dir or not os.path.exists(temp_dir):
-            return jsonify({'success': False, 'error': 'Session expired or invalid'})
-        
-        # Get chunk info from request
-        data = request.json
-        chunks = data.get('chunks', [])
-        
-        if not chunks:
-            return jsonify({'success': False, 'error': 'No chunks to combine'})
-        
-        # Sort chunks by start page
-        chunks.sort(key=lambda x: int(x.split('_')[0]))
-        
-        # Combine chunks
-        import fitz
-        result_doc = fitz.open()
-        
-        for chunk_id in chunks:
-            start_page, end_page = map(int, chunk_id.split('_'))
-            chunk_path = os.path.join(temp_dir, f"chunk_{start_page}_{end_page}.pdf")
-            
-            if os.path.exists(chunk_path):
-                chunk_doc = fitz.open(chunk_path)
-                result_doc.insert_pdf(chunk_doc)
-                chunk_doc.close()
-        
-        # Save combined result
-        result_filename = f"night_mode_{original_filename}"
-        result_path = os.path.join(temp_dir, result_filename)
-        result_doc.save(result_path, garbage=4, deflate=True, clean=True)
-        result_doc.close()
-        
-        # Store result path in session
-        session['result_path'] = result_path
-        session['result_filename'] = result_filename
-        
-        return jsonify({'success': True, 'redirect': url_for('download_result')})
-        
-    except Exception as e:
-        app.logger.error(f"Error combining chunks: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/download-result')
-def download_result():
-    try:
-        # Get result info from session
-        result_path = session.get('result_path')
-        result_filename = session.get('result_filename')
-        
-        if not result_path or not os.path.exists(result_path):
-            return render_template('index.html', error='Result not found or session expired')
-        
-        # Serve the file
-        return send_file(
-            result_path,
-            as_attachment=True,
-            download_name=result_filename
-        )
-        
-    except Exception as e:
-        app.logger.error(f"Error in download_result: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return render_template('index.html', error=f'Error downloading result: {str(e)}')
+    return render_template('index.html', serverless_mode=SERVERLESS_MODE, size_limit=MAX_FILE_SIZE)
 
 # Health check endpoint with system info
 @app.route('/health')
@@ -314,8 +165,7 @@ def health_check():
             "platform": sys.platform,
             "temp_dir": tempfile.gettempdir(),
             "serverless_mode": SERVERLESS_MODE,
-            "max_content_length": app.config['MAX_CONTENT_LENGTH'],
-            "env": {k: v for k, v in os.environ.items() if k.startswith(('PYTHON', 'FLASK', 'VERCEL'))}
+            "max_content_length": app.config['MAX_CONTENT_LENGTH']
         }
         return jsonify(system_info)
     except Exception as e:
@@ -341,6 +191,101 @@ def cleanup_temp_files(exception):
                         os.remove(filepath)
         except Exception as e:
             app.logger.warning(f"Error during cleanup: {str(e)}")
+
+@app.route('/system-check')
+def system_check():
+    """Perform system compatibility check and verify required dependencies"""
+    try:
+        # Check Python version
+        python_version = sys.version_info
+        python_ok = python_version.major >= 3 and python_version.minor >= 6
+        
+        # Check PyMuPDF
+        fitz_ok = False
+        fitz_version = "Not installed"
+        try:
+            import fitz
+            fitz_version = fitz.__version__
+            fitz_ok = True
+        except ImportError:
+            pass
+            
+        # Check Pillow
+        pil_ok = False
+        pil_version = "Not installed"
+        try:
+            from PIL import __version__ as pil_version
+            pil_ok = True
+        except ImportError:
+            try:
+                from PIL import Image
+                pil_version = "Installed (version unknown)"
+                pil_ok = True
+            except ImportError:
+                pass
+                
+        # Check for temp directory access
+        temp_ok = False
+        temp_path = ""
+        try:
+            temp_dir = tempfile.mkdtemp()
+            temp_path = temp_dir
+            test_file = os.path.join(temp_dir, "test.txt")
+            with open(test_file, "w") as f:
+                f.write("test")
+            os.remove(test_file)
+            os.rmdir(temp_dir)
+            temp_ok = True
+        except Exception as e:
+            app.logger.error(f"Temp directory issue: {str(e)}")
+            
+        # Check if the system has enough memory (approximate check)
+        mem_ok = True
+        mem_info = "Unknown"
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            mem_ok = mem.available > 500 * 1024 * 1024  # 500MB minimum
+            mem_info = f"{mem.available / (1024 * 1024):.0f}MB available"
+        except ImportError:
+            pass
+            
+        # Determine overall status
+        system_ready = python_ok and fitz_ok and pil_ok and temp_ok
+        
+        # Create result
+        result = {
+            "system_ready": system_ready,
+            "python": {
+                "version": f"{python_version.major}.{python_version.minor}.{python_version.micro}",
+                "ok": python_ok
+            },
+            "dependencies": {
+                "pymupdf": {
+                    "version": fitz_version,
+                    "ok": fitz_ok
+                },
+                "pillow": {
+                    "version": pil_version,
+                    "ok": pil_ok
+                }
+            },
+            "system": {
+                "temp_directory": {
+                    "path": temp_path,
+                    "ok": temp_ok
+                },
+                "memory": {
+                    "info": mem_info,
+                    "ok": mem_ok
+                }
+            }
+        }
+        
+        return render_template('system_check.html', check=result)
+    except Exception as e:
+        app.logger.error(f"Error in system check: {str(e)}")
+        return render_template('system_check.html', error=str(e))
 
 if __name__ == '__main__':
     # Run directly 

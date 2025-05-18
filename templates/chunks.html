@@ -314,6 +314,12 @@
                 if (result.success && result.redirect) {
                     statusElement.textContent = 'Combined successfully! Downloading...';
                     window.location.href = result.redirect;
+                    
+                    // Reset button state after 3 seconds
+                    setTimeout(() => {
+                        combineBtn.disabled = false;
+                        statusElement.textContent = 'Download complete. You can combine again if needed.';
+                    }, 3000);
                 } else {
                     showError(result.error || 'Failed to combine chunks');
                     combineBtn.disabled = false;

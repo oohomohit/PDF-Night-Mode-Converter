@@ -67,7 +67,7 @@
         .file-input {
             margin-bottom: 20px;
         }
-        button {
+        button, .btn-download {
             background-color: #3498db;
             color: white;
             border: none;
@@ -76,13 +76,30 @@
             cursor: pointer;
             font-size: 16px;
             transition: background-color 0.3s;
+            text-decoration: none;
+            display: inline-block;
         }
-        button:hover {
+        button:hover, .btn-download:hover {
             background-color: #2980b9;
         }
         button:disabled {
             background-color: #cccccc;
             cursor: not-allowed;
+        }
+        .btn-download {
+            background-color: #27ae60;
+            margin-top: 10px;
+        }
+        .btn-download:hover {
+            background-color: #219955;
+        }
+        .system-check-link {
+            color: #3498db;
+            text-decoration: none;
+            font-size: 0.9em;
+        }
+        .system-check-link:hover {
+            text-decoration: underline;
         }
         footer {
             margin-top: 30px;
@@ -136,23 +153,36 @@
         <div class="info-box">
             <p>Upload a PDF file to convert it to night mode (dark background with light text).</p>
             <p>The converted PDF will be automatically downloaded when ready.</p>
+            <p><a href="/system-check" class="system-check-link">System Compatibility Check</a></p>
         </div>
         
         {% if serverless_mode %}
         <div class="warning-box">
-            <p>⚠️ <strong>Serverless Mode:</strong> For small files (under 2MB), processing happens in one go.</p>
-            <p>For larger files, our chunk processing system divides your PDF into smaller parts, processes each part separately, and combines them back together.</p>
+            <p>⚠️ <strong>Serverless Mode:</strong> This online version can only process small files (under 2MB).</p>
+            <p>For larger files, please use the local version which can be downloaded if you try to upload a large file.</p>
         </div>
         {% else %}
         <div class="feature-box">
-            <p>✅ <strong>Full Mode:</strong> You can process PDFs up to 50MB!</p>
-            <p>Large files may take longer to process but will be handled in a single operation.</p>
+            <p>✅ <strong>Full Mode:</strong> You can process PDFs up to 2MB online!</p>
+            <p>For larger files, you'll be prompted to download the local converter which can handle files of any size.</p>
         </div>
         {% endif %}
         
         {% if error %}
         <div class="error-message">
             <p>{{ error }}</p>
+            {% if show_download_local %}
+            <p>
+                <a href="{{ url_for('static', filename='local_converter.py') }}" class="btn-download">
+                    Download Local Converter
+                </a>
+            </p>
+            <div class="info-box">
+                <p>The local version can process files of any size and uses multithreading for faster conversions.</p>
+                <p>It also produces <strong>higher quality</strong> output with better resolution and image quality.</p>
+                <p><strong>Usage:</strong> python local_converter.py input.pdf</p>
+            </div>
+            {% endif %}
         </div>
         {% endif %}
         
@@ -248,6 +278,25 @@
             }
             return false;
         };
+        
+        // Add event listener to reset the button state
+        window.addEventListener('focus', function() {
+            // When the window regains focus (after download dialog appears),
+            // reset the button state
+            setTimeout(function() {
+                submitBtn.style.display = 'block';
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }, 1000);
+        });
+        
+        // Additional failsafe to ensure button resets after a certain time
+        document.getElementById('uploadForm').addEventListener('submit', function() {
+            // Reset button after 8 seconds regardless of focus event
+            setTimeout(function() {
+                submitBtn.style.display = 'block';
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }, 8000);
+        });
     </script>
 </body>
 </html> 

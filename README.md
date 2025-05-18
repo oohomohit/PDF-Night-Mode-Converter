@@ -1,20 +1,21 @@
 # PDF Night Mode Converter
 
-A web application that converts PDF files to night mode (dark background with light text).
+A tool that converts PDF files to night mode (dark background with light text).
 
 ## Features
 
-- Upload PDF files through a simple web interface
-- Automatic conversion to night mode
-- Download or view the converted PDF
-- Responsive design that works on desktop and mobile
+- Convert PDFs to night mode (inverts colors and adds dark background)
+- Web interface for online use with small files (up to 2MB)
+- Command-line tool for local processing of files of any size
+- Multithreaded support for faster local processing
+- High-quality output with customizable settings
 
 ## Requirements
 
 - Python 3.6+
-- Flask
 - PyMuPDF (fitz)
 - Pillow (PIL)
+- Flask (for web interface)
 
 ## Installation
 
@@ -33,6 +34,10 @@ pip install flask pymupdf pillow
 
 ## Usage
 
+### Web Application (For Small PDFs)
+
+The web application is best for PDFs up to 2MB:
+
 1. Run the Flask application:
 
 ```bash
@@ -45,17 +50,41 @@ python app.py
 
 4. Click the "Convert to Night Mode" button
 
-5. Download or view your converted PDF
+5. Download your converted PDF
+
+### Command-Line Tool (For Any Size PDFs)
+
+For processing files of any size, use the local command-line tool with multithreading:
+
+```bash
+python local_converter.py input.pdf -o output_night_mode.pdf
+```
+
+Options:
+- `-o, --output`: Specify output filename (default: adds `_night_mode` suffix)
+- `-q, --quality`: Image quality (1-100, default: 90)
+- `-s, --scale`: Resolution scale factor (default: 2.0)
+- `-t, --threads`: Number of processing threads (default: 4)
+
+Example with options:
+```bash
+python local_converter.py large_textbook.pdf -q 95 -s 2.5 -t 8
+```
 
 ## How It Works
 
-The application uses PyMuPDF to render PDF pages as images, inverts the colors using PIL (Python Imaging Library), and then creates a new PDF with these inverted images.
+The application uses PyMuPDF to render PDF pages as images, inverts the colors using PIL (Python Imaging Library), and then creates a new PDF with these inverted images on a black background.
 
-## Limitations
+The local command-line version uses multithreading to process pages in parallel, making it much faster for large documents.
 
-- The conversion process can be memory-intensive for large PDFs
-- Maximum upload size is limited to 16MB by default
-- Text in the resulting PDF is not selectable (it's converted to images)
+## Online Version Limitations
+
+The online version is intended for small files only (up to 2MB) due to:
+- Memory constraints in browser environments
+- Serverless platform limitations when deployed online
+- Processing time considerations
+
+For larger files, please download and use the local command-line version.
 
 ## License
 
